@@ -1,11 +1,20 @@
 {
   "dxt_version": "0.2",
   "name": "beehiiv-mcp-server",
+  "display_name": "Beehiiv Analytics MCP Server",
   "version": "1.0.0",
   "description": "MCP server for Beehiiv API integration - manage newsletters, publications, posts, and subscribers",
+  "long_description": "A comprehensive MCP server that provides access to Beehiiv's newsletter platform API. This extension allows you to manage publications, posts, subscribers, and segments directly from Claude Desktop. Perfect for content creators and newsletter managers who want to analyze their Beehiiv data and automate newsletter operations.",
   "author": {
-    "name": "ousepachn"
+    "name": "ousepachn",
+    "email": "ousepachn@example.com"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ousepachn/beehiivanalyticsMCP"
+  },
+  "homepage": "https://github.com/ousepachn/beehiivanalyticsMCP",
+  "icon": "icon.png",
   "server": {
     "type": "node",
     "entry_point": "server.js",
@@ -23,7 +32,7 @@
     "api_key": {
       "type": "string",
       "title": "Beehiiv API Key",
-      "description": "Your Beehiiv API key for authentication",
+      "description": "Your Beehiiv API key for authentication. You can find this in your Beehiiv dashboard under Settings > API.",
       "sensitive": true,
       "required": true
     }
@@ -31,35 +40,35 @@
   "tools": [
     {
       "name": "get_publications",
-      "description": "Get list of publications"
+      "description": "Get list of all publications associated with your Beehiiv account"
     },
     {
       "name": "get_publication_details",
-      "description": "Get detailed information about a specific publication"
+      "description": "Get detailed information about a specific publication including settings, analytics, and configuration"
     },
     {
       "name": "get_posts",
-      "description": "Get posts for a publication"
+      "description": "Get posts for a specific publication with optional limit parameter"
     },
     {
       "name": "get_post_details",
-      "description": "Get detailed information about a specific post"
+      "description": "Get detailed information about a specific post including content, analytics, and metadata"
     },
     {
       "name": "get_subscribers",
-      "description": "Get subscribers for a publication"
+      "description": "Get subscribers for a specific publication with optional limit parameter"
     },
     {
       "name": "get_subscriber_details",
-      "description": "Get detailed information about a specific subscriber"
+      "description": "Get detailed information about a specific subscriber including subscription status and preferences"
     },
     {
       "name": "get_segments",
-      "description": "Get segments for a publication"
+      "description": "Get segments for a specific publication to organize and target subscribers"
     },
     {
       "name": "get_segment_details",
-      "description": "Get detailed information about a specific segment"
+      "description": "Get detailed information about a specific segment including subscriber count and criteria"
     }
   ]
 }
