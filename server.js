@@ -2,6 +2,117 @@
 
 console.error("=== BEEHIIV MCP SERVER STARTING ===");
 
+// Check API key
+const apiKey = process.env.BEEHIIV_API_KEY;
+if (!apiKey) {
+  console.error("❌ BEEHIIV_API_KEY environment variable is required");
+  process.exit(1);
+}
+
+console.error("✓ API key found, length:", apiKey.length);
+
+// HTTP request helper
+function makeRequest(method, url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    console.error(`Making ${method} request to:`, url);
+    
+    const urlObj = new URL(url);
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Beehiiv-MCP-Server/1.0.0',
+        ...headers
+      },
+      timeout: 30000
+    };
+
+    const req = (urlObj.protocol === 'https:' ? require('https') : require('http')).request(options, (res) => {
+      console.error(`Response status: ${res.statusCode}`);
+      
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        console.error(`Response data length: ${data.length} bytes`);
+        try {
+          const parsed = JSON.parse(data);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(parsed);
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}: ${parsed.message || 'Unknown error'}`));
+          }
+        } catch (error) {
+          reject(new Error(`Failed to parse response: ${error.message}`));
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      console.error(`Request error:`, error.message);
+      reject(error);
+    });
+
+    req.on('timeout', () => {
+      console.error(`Request timeout`);
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+
+    req.end();
+  });
+}
+
+// Beehiiv API client
+class BeehiivAPI {
+  constructor(apiKey) {
+    this.apiKey = apiKey;
+    this.baseUrl = 'https://api.beehiiv.com/v2';
+    this.headers = {
+      'Authorization': `Bearer ${apiKey}`
+    };
+    console.error("✓ BeehiivAPI initialized");
+  }
+
+  async getPublications() {
+    return await makeRequest('GET', `${this.baseUrl}/publications`, this.headers);
+  }
+
+  async getPublicationDetails(publicationId) {
+    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}`, this.headers);
+  }
+
+  async getPosts(publicationId, limit = 10) {
+    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/posts?limit=${limit}`, this.headers);
+  }
+
+  async getPostDetails(publicationId, postId) {
+    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/posts/${postId}`, this.headers);
+  }
+
+  async getSubscribers(publicationId, limit = 10) {
+    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/subscribers?limit=${limit}`, this.headers);
+  }
+
+  async getSubscriberDetails(publicationId, subscriberId) {
+    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/subscribers/${subscriberId}`, this.headers);
+  }
+
+  async getSegments(publicationId) {
+    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/segments`, this.headers);
+  }
+
+  async getSegmentDetails(publicationId, segmentId) {
+    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/segments/${segmentId}`, this.headers);
+  }
+}
+
+const client = new BeehiivAPI(apiKey);
 let isInitialized = false;
 
 function sendResponse(id, result, error = null) {
@@ -250,43 +361,53 @@ process.stdin.on('data', (chunk) => {
         const { name, arguments: args } = request.params;
         console.error(`Executing tool: ${name} with args:`, args);
         
-        // Handle all 8 tools with test responses
-        let result;
-        switch (name) {
-          case 'get_publications':
-            result = `Publications list: [Test publication data would be returned here]`;
-            break;
-          case 'get_publication_details':
-            result = `Publication details for ID ${args.publication_id}: [Detailed publication info would be returned here]`;
-            break;
-          case 'get_posts':
-            result = `Posts for publication ${args.publication_id} (limit: ${args.limit || 10}): [Posts data would be returned here]`;
-            break;
-          case 'get_post_details':
-            result = `Post details for publication ${args.publication_id}, post ${args.post_id}: [Detailed post info would be returned here]`;
-            break;
-          case 'get_subscribers':
-            result = `Subscribers for publication ${args.publication_id} (limit: ${args.limit || 10}): [Subscribers data would be returned here]`;
-            break;
-          case 'get_subscriber_details':
-            result = `Subscriber details for publication ${args.publication_id}, subscriber ${args.subscriber_id}: [Detailed subscriber info would be returned here]`;
-            break;
-          case 'get_segments':
-            result = `Segments for publication ${args.publication_id}: [Segments data would be returned here]`;
-            break;
-          case 'get_segment_details':
-            result = `Segment details for publication ${args.publication_id}, segment ${args.segment_id}: [Detailed segment info would be returned here]`;
-            break;
-          default:
-            throw new Error(`Unknown tool: ${name}`);
-        }
-        
-        sendResponse(request.id, {
-          content: [{
-            type: "text",
-            text: result
-          }]
-        });
+        // Handle all 8 tools with real API calls (async)
+        (async () => {
+          try {
+            let result;
+            switch (name) {
+              case 'get_publications':
+                result = await client.getPublications();
+                break;
+              case 'get_publication_details':
+                result = await client.getPublicationDetails(args.publication_id);
+                break;
+              case 'get_posts':
+                result = await client.getPosts(args.publication_id, args.limit || 10);
+                break;
+              case 'get_post_details':
+                result = await client.getPostDetails(args.publication_id, args.post_id);
+                break;
+              case 'get_subscribers':
+                result = await client.getSubscribers(args.publication_id, args.limit || 10);
+                break;
+              case 'get_subscriber_details':
+                result = await client.getSubscriberDetails(args.publication_id, args.subscriber_id);
+                break;
+              case 'get_segments':
+                result = await client.getSegments(args.publication_id);
+                break;
+              case 'get_segment_details':
+                result = await client.getSegmentDetails(args.publication_id, args.segment_id);
+                break;
+              default:
+                throw new Error(`Unknown tool: ${name}`);
+            }
+            
+            sendResponse(request.id, {
+              content: [{
+                type: "text",
+                text: JSON.stringify(result, null, 2)
+              }]
+            });
+          } catch (error) {
+            console.error(`Tool execution error:`, error.message);
+            sendResponse(request.id, null, {
+              code: -32603,
+              message: `Tool execution failed: ${error.message}`
+            });
+          }
+        })();
         break;
         
       default:
