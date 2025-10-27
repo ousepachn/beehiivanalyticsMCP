@@ -10,7 +10,7 @@
     "type": "python",
     "entry_point": "beehiiv_mcp_server.py",
     "mcp_config": {
-      "command": "python",
+      "command": "${__dirname}/venv/bin/python",
       "args": [
         "${__dirname}/beehiiv_mcp_server.py"
       ]
