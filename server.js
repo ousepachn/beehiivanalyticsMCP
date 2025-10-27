@@ -3,51 +3,87 @@
 /**
  * Beehiiv MCP Server for Analytics
  * Provides read-only access to Beehiiv API for publications, posts, and segments analytics.
- * Self-contained version using only Node.js built-in modules.
+ * Compatible with older Node.js versions using https module.
  */
 
-import { createServer } from "http";
-import { spawn } from "child_process";
+import https from "https";
+import http from "http";
+import { URL } from "url";
 
-// Simple HTTP client using Node.js built-in fetch (Node 18+)
-async function makeRequest(method, url, headers = {}, body = null) {
-  const options = {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...headers,
-    },
-  };
-
-  if (body) {
-    options.body = JSON.stringify(body);
-  }
-
-  try {
-    const response = await fetch(url, options);
+// HTTP client using Node.js built-in modules
+function makeRequest(method, urlString, headers = {}, body = null) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(urlString);
+    const isHttps = url.protocol === "https:";
+    const client = isHttps ? https : http;
     
-    if (!response.ok) {
-      const status = response.status;
-      if (status === 401) {
-        throw new Error("Invalid API key. Please check your BEEHIIV_API_KEY.");
-      } else if (status === 403) {
-        throw new Error("API access forbidden. Please check your API key permissions.");
-      } else if (status === 404) {
-        throw new Error("Resource not found.");
-      } else if (status >= 500) {
-        throw new Error("Beehiiv API server error. Please try again later.");
-      } else {
-        throw new Error(`API request failed with status ${status}: ${response.statusText}`);
-      }
-    }
+    const options = {
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80),
+      path: url.pathname + url.search,
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...headers,
+      },
+      timeout: 30000,
+    };
 
-    return await response.json();
-  } catch (error) {
-    if (error.name === "TypeError" && error.message.includes("fetch")) {
-      throw new Error("Unable to connect to Beehiiv API. Please check your internet connection.");
+    const req = client.request(options, (res) => {
+      let data = "";
+      
+      res.on("data", (chunk) => {
+        data += chunk;
+      });
+      
+      res.on("end", () => {
+        try {
+          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+            let errorMessage;
+            if (res.statusCode === 401) {
+              errorMessage = "Invalid API key. Please check your BEEHIIV_API_KEY.";
+            } else if (res.statusCode === 403) {
+              errorMessage = "API access forbidden. Please check your API key permissions.";
+            } else if (res.statusCode === 404) {
+              errorMessage = "Resource not found.";
+            } else if (res.statusCode && res.statusCode >= 500) {
+              errorMessage = "Beehiiv API server error. Please try again later.";
+            } else {
+              errorMessage = `API request failed with status ${res.statusCode}: ${res.statusMessage}`;
+            }
+            reject(new Error(errorMessage));
+            return;
+          }
+          
+          const jsonData = JSON.parse(data);
+          resolve(jsonData);
+        } catch (error) {
+          reject(new Error(`Failed to parse response: ${error.message}`));
+        }
+      });
+    });
+
+    req.on("error", (error) => {
+      if (error.code === "ENOTFOUND" || error.code === "ECONNREFUSED") {
+        reject(new Error("Unable to connect to Beehiiv API. Please check your internet connection."));
+      } else if (error.code === "ECONNABORTED") {
+        reject(new Error("API request timed out. Please try again."));
+      } else {
+        reject(new Error(`API request failed: ${error.message}`));
+      }
+    });
+
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("API request timed out. Please try again."));
+    });
+
+    if (body) {
+      req.write(JSON.stringify(body));
     }
-    throw error;
-  }
+    
+    req.end();
+  });
 }
 
 class BeehiivAPI {
