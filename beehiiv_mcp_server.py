@@ -7,22 +7,21 @@ Provides read-only access to Beehiiv API for publications, posts, and segments a
 import asyncio
 import json
 import os
-from typing import Any, Dict, List, Optional, Union
-from datetime import datetime
+import signal
+import sys
+from typing import Any, Dict, List, Optional
 
 import requests
 from mcp.server import Server
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 from mcp.types import (
-    CallToolRequest,
     CallToolResult,
-    ListToolsRequest,
     ListToolsResult,
+    ListPromptsResult,
+    ListResourcesResult,
     Tool,
     TextContent,
-    ImageContent,
-    EmbeddedResource,
 )
 from mcp.server.lowlevel import NotificationOptions
 
@@ -45,7 +44,7 @@ class BeehiivAPI:
     def _make_request(
         self, method: str, endpoint: str, params: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """Make a request to the Beehiiv API."""
+        """Make a request to the Beehiiv API with improved error handling."""
         url = f"{self.base_url}{endpoint}"
         try:
             response = requests.request(
@@ -53,6 +52,21 @@ class BeehiivAPI:
             )
             response.raise_for_status()
             return response.json()
+        except requests.exceptions.Timeout:
+            raise Exception("API request timed out. Please try again.")
+        except requests.exceptions.ConnectionError:
+            raise Exception("Unable to connect to Beehiiv API. Please check your internet connection.")
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 401:
+                raise Exception("Invalid API key. Please check your BEEHIIV_API_KEY.")
+            elif response.status_code == 403:
+                raise Exception("API access forbidden. Please check your API key permissions.")
+            elif response.status_code == 404:
+                raise Exception("Resource not found.")
+            elif response.status_code >= 500:
+                raise Exception("Beehiiv API server error. Please try again later.")
+            else:
+                raise Exception(f"API request failed with status {response.status_code}: {str(e)}")
         except requests.exceptions.RequestException as e:
             raise Exception(f"API request failed: {str(e)}")
 
@@ -453,22 +467,59 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> CallToolResult:
         )
 
 
+@server.list_prompts()
+async def handle_list_prompts() -> ListPromptsResult:
+    """Handle list prompts request."""
+    # This server doesn't provide prompts, return empty list
+    return ListPromptsResult(prompts=[])
+
+
+@server.list_resources()
+async def handle_list_resources() -> ListResourcesResult:
+    """Handle list resources request."""
+    # This server doesn't provide resources, return empty list
+    return ListResourcesResult(resources=[])
+
+
 async def main():
-    """Main server function."""
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="beehiiv-analytics",
-                server_version="1.0.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
+    """Main server function with improved error handling."""
+    try:
+        # Set up signal handlers for graceful shutdown
+        def signal_handler(signum, frame):
+            print(f"Received signal {signum}, shutting down gracefully...", file=sys.stderr)
+            sys.exit(0)
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="beehiiv-analytics",
+                    server_version="1.0.0",
+                    capabilities=server.get_capabilities(
+                        notification_options=NotificationOptions(),
+                        experimental_capabilities={},
+                    ),
                 ),
-            ),
-        )
+            )
+    except BrokenPipeError:
+        # Handle broken pipe gracefully - this happens when client disconnects
+        print("Client disconnected, shutting down gracefully", file=sys.stderr)
+        sys.exit(0)
+    except Exception as e:
+        print(f"Server error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Server interrupted by user", file=sys.stderr)
+        sys.exit(0)
+    except Exception as e:
+        print(f"Fatal error: {e}", file=sys.stderr)
+        sys.exit(1)
