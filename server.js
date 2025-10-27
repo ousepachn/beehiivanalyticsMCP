@@ -10,9 +10,25 @@ import https from "https";
 import http from "http";
 import { URL } from "url";
 
+// Enhanced logging function
+function log(level, message, data = null) {
+  const timestamp = new Date().toISOString();
+  const logEntry = {
+    timestamp,
+    level,
+    message,
+    ...(data && { data })
+  };
+  
+  // Log to stderr so it appears in Claude Desktop logs
+  console.error(`[${timestamp}] [${level}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+}
+
 // HTTP client using Node.js built-in modules
 function makeRequest(method, urlString, headers = {}, body = null) {
   return new Promise((resolve, reject) => {
+    log("DEBUG", `Making ${method} request to ${urlString}`);
+    
     const url = new URL(urlString);
     const isHttps = url.protocol === "https:";
     const client = isHttps ? https : http;
@@ -29,7 +45,17 @@ function makeRequest(method, urlString, headers = {}, body = null) {
       timeout: 30000,
     };
 
+    log("DEBUG", "Request options", { 
+      hostname: options.hostname, 
+      port: options.port, 
+      path: options.path,
+      method: options.method,
+      headers: options.headers
+    });
+
     const req = client.request(options, (res) => {
+      log("DEBUG", `Response received: ${res.statusCode} ${res.statusMessage}`);
+      
       let data = "";
       
       res.on("data", (chunk) => {
@@ -51,19 +77,23 @@ function makeRequest(method, urlString, headers = {}, body = null) {
             } else {
               errorMessage = `API request failed with status ${res.statusCode}: ${res.statusMessage}`;
             }
+            log("ERROR", errorMessage, { statusCode: res.statusCode, responseData: data });
             reject(new Error(errorMessage));
             return;
           }
           
           const jsonData = JSON.parse(data);
+          log("DEBUG", "Response parsed successfully", { dataLength: data.length });
           resolve(jsonData);
         } catch (error) {
+          log("ERROR", `Failed to parse response: ${error.message}`, { responseData: data });
           reject(new Error(`Failed to parse response: ${error.message}`));
         }
       });
     });
 
     req.on("error", (error) => {
+      log("ERROR", `Request error: ${error.message}`, { errorCode: error.code });
       if (error.code === "ENOTFOUND" || error.code === "ECONNREFUSED") {
         reject(new Error("Unable to connect to Beehiiv API. Please check your internet connection."));
       } else if (error.code === "ECONNABORTED") {
@@ -74,11 +104,13 @@ function makeRequest(method, urlString, headers = {}, body = null) {
     });
 
     req.on("timeout", () => {
+      log("ERROR", "Request timeout after 30 seconds");
       req.destroy();
       reject(new Error("API request timed out. Please try again."));
     });
 
     if (body) {
+      log("DEBUG", "Sending request body", { bodyLength: JSON.stringify(body).length });
       req.write(JSON.stringify(body));
     }
     
@@ -88,11 +120,17 @@ function makeRequest(method, urlString, headers = {}, body = null) {
 
 class BeehiivAPI {
   constructor(apiKey) {
+    log("INFO", "Initializing BeehiivAPI client");
     this.apiKey = apiKey;
     this.baseUrl = "https://api.beehiiv.com/v2";
     this.headers = {
       Authorization: `Bearer ${apiKey}`,
     };
+    log("DEBUG", "BeehiivAPI client initialized", { 
+      baseUrl: this.baseUrl, 
+      hasApiKey: !!this.apiKey,
+      apiKeyLength: this.apiKey ? this.apiKey.length : 0
+    });
   }
 
   async getPublications() {
@@ -153,8 +191,18 @@ class BeehiivAPI {
 }
 
 // Get API key from environment
+log("INFO", "Starting Beehiiv MCP Server");
+log("DEBUG", "Environment check", { 
+  nodeVersion: process.version,
+  platform: process.platform,
+  arch: process.arch,
+  hasApiKey: !!process.env.BEEHIIV_API_KEY,
+  apiKeyLength: process.env.BEEHIIV_API_KEY ? process.env.BEEHIIV_API_KEY.length : 0
+});
+
 const apiKey = process.env.BEEHIIV_API_KEY;
 if (!apiKey) {
+  log("ERROR", "BEEHIIV_API_KEY environment variable is required");
   console.error("Error: BEEHIIV_API_KEY environment variable is required");
   process.exit(1);
 }
@@ -362,6 +410,7 @@ class SimpleMCPServer {
 
   async handleRequest(request) {
     const { method, params, id } = request;
+    log("DEBUG", `Handling MCP request: ${method}`, { requestId: id, method, params });
 
     try {
       switch (method) {
@@ -437,6 +486,7 @@ class SimpleMCPServer {
 
   async handleToolCall(params, id) {
     const { name, arguments: args } = params;
+    log("INFO", `Executing tool: ${name}`, { toolName: name, arguments: args });
 
     try {
       let result;
@@ -518,15 +568,19 @@ class SimpleMCPServer {
 
 // Start the server
 async function main() {
+  log("INFO", "Initializing MCP server");
   const server = new SimpleMCPServer();
   
+  log("INFO", "Beehiiv MCP server running on stdio");
   console.error("Beehiiv MCP server running on stdio");
 
   // Handle stdin/stdout for MCP protocol
   let buffer = "";
   
   process.stdin.on("data", async (chunk) => {
-    buffer += chunk.toString();
+    const chunkStr = chunk.toString();
+    log("DEBUG", "Received data chunk", { chunkLength: chunkStr.length });
+    buffer += chunkStr;
     
     // Process complete JSON-RPC messages
     const lines = buffer.split("\n");
@@ -535,10 +589,13 @@ async function main() {
     for (const line of lines) {
       if (line.trim()) {
         try {
+          log("DEBUG", "Parsing JSON-RPC request", { lineLength: line.length });
           const request = JSON.parse(line);
           const response = await server.handleRequest(request);
+          log("DEBUG", "Sending JSON-RPC response", { responseId: response.id });
           console.log(JSON.stringify(response));
         } catch (error) {
+          log("ERROR", "Error processing request", { error: error.message, stack: error.stack });
           console.error("Error processing request:", error);
         }
       }
@@ -546,32 +603,46 @@ async function main() {
   });
 
   process.stdin.on("end", () => {
+    log("INFO", "Stdin ended, shutting down");
     process.exit(0);
+  });
+
+  process.stdin.on("error", (error) => {
+    log("ERROR", "Stdin error", { error: error.message });
+  });
+
+  process.stdout.on("error", (error) => {
+    log("ERROR", "Stdout error", { error: error.message });
   });
 }
 
 // Handle graceful shutdown
 process.on("SIGINT", () => {
+  log("INFO", "Received SIGINT, shutting down gracefully...");
   console.error("Received SIGINT, shutting down gracefully...");
   process.exit(0);
 });
 
 process.on("SIGTERM", () => {
+  log("INFO", "Received SIGTERM, shutting down gracefully...");
   console.error("Received SIGTERM, shutting down gracefully...");
   process.exit(0);
 });
 
 process.on("uncaughtException", (error) => {
+  log("ERROR", "Uncaught exception", { error: error.message, stack: error.stack });
   console.error("Uncaught exception:", error);
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
+  log("ERROR", "Unhandled rejection", { reason: reason.toString(), promise: promise.toString() });
   console.error("Unhandled rejection at:", promise, "reason:", reason);
   process.exit(1);
 });
 
 main().catch((error) => {
+  log("ERROR", "Fatal error in main", { error: error.message, stack: error.stack });
   console.error("Fatal error:", error);
   process.exit(1);
 });
