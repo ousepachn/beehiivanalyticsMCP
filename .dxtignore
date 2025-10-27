@@ -1,0 +1,40 @@
+# DXT ignore file - excludes files from DXT packaging
+# Test files
+test_*.py
+*_test.py
+
+# Documentation and examples
+README.md
+example_usage.py
+
+# Git files
+.git/
+.gitignore
+
+# Python cache and temporary files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environment (we'll include dependencies differently)
+venv/
+.venv/
+env/
+.env
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log

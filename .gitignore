@@ -146,3 +146,7 @@ Thumbs.db
 
 # MCP specific
 mcp_config.json
+
+# DXT packages
+*.mcpb
+*.dxt
