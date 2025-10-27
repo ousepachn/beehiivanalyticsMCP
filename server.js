@@ -54,14 +54,17 @@ process.stdin.on('data', (chunk) => {
             version: "1.0.0"
           }
         });
-        
-        // Send initialized notification
-        setTimeout(() => {
-          sendNotification("initialized");
-          isInitialized = true;
-          console.error("✓ Server initialized successfully");
-        }, 100);
         break;
+        
+      case 'notifications/initialized':
+        console.error("Handling notifications/initialized - marking server as initialized");
+        // Mark server as initialized immediately
+        isInitialized = true;
+        // Send our initialized notification immediately
+        sendNotification("initialized");
+        console.error("✓ Server initialized successfully");
+        // Don't send a response - notifications don't get responses
+        return;
         
       case 'tools/list':
         console.error("Handling tools/list request");
