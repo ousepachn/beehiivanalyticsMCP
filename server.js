@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Minimal Beehiiv MCP Server Test
- * This is a simplified version to test basic functionality
+ * Minimal Beehiiv MCP Server - Fixed Protocol Implementation
+ * This version properly implements the MCP protocol flow
  */
 
 console.error("=== BEEHIIV MCP SERVER STARTING ===");
@@ -35,17 +35,28 @@ try {
   process.exit(1);
 }
 
-// Simple MCP server implementation
+// MCP Server implementation
 let requestId = 0;
+let isInitialized = false;
 
-function sendResponse(method, result, error = null) {
+function sendResponse(id, result, error = null) {
   const response = {
     jsonrpc: "2.0",
-    id: requestId++,
+    id: id,
     ...(error ? { error } : { result })
   };
   console.log(JSON.stringify(response));
-  console.error(`Sent response for ${method}:`, error ? 'ERROR' : 'SUCCESS');
+  console.error(`Sent response ID ${id}:`, error ? 'ERROR' : 'SUCCESS');
+}
+
+function sendNotification(method, params = {}) {
+  const notification = {
+    jsonrpc: "2.0",
+    method: method,
+    params: params
+  };
+  console.log(JSON.stringify(notification));
+  console.error(`Sent notification: ${method}`);
 }
 
 console.error("=== STARTING MCP PROTOCOL HANDLER ===");
@@ -70,7 +81,15 @@ process.stdin.on('data', (chunk) => {
         switch (request.method) {
           case 'initialize':
             console.error("Handling initialize request");
-            sendResponse('initialize', {
+            if (isInitialized) {
+              sendResponse(request.id, null, {
+                code: -32002,
+                message: "Server already initialized"
+              });
+              return;
+            }
+            
+            sendResponse(request.id, {
               protocolVersion: "2025-06-18",
               capabilities: {
                 tools: {},
@@ -78,15 +97,30 @@ process.stdin.on('data', (chunk) => {
                 resources: {}
               },
               serverInfo: {
-                name: "beehiiv-test",
+                name: "beehiiv-mcp-server",
                 version: "1.0.0"
               }
             });
+            
+            // Send initialized notification
+            setTimeout(() => {
+              sendNotification("initialized");
+              isInitialized = true;
+              console.error("✓ Server initialized successfully");
+            }, 100);
             break;
             
           case 'tools/list':
             console.error("Handling tools/list request");
-            sendResponse('tools/list', {
+            if (!isInitialized) {
+              sendResponse(request.id, null, {
+                code: -32002,
+                message: "Server not initialized"
+              });
+              return;
+            }
+            
+            sendResponse(request.id, {
               tools: [{
                 name: "test_tool",
                 description: "A simple test tool",
@@ -101,17 +135,41 @@ process.stdin.on('data', (chunk) => {
             
           case 'prompts/list':
             console.error("Handling prompts/list request");
-            sendResponse('prompts/list', { prompts: [] });
+            if (!isInitialized) {
+              sendResponse(request.id, null, {
+                code: -32002,
+                message: "Server not initialized"
+              });
+              return;
+            }
+            
+            sendResponse(request.id, { prompts: [] });
             break;
             
           case 'resources/list':
             console.error("Handling resources/list request");
-            sendResponse('resources/list', { resources: [] });
+            if (!isInitialized) {
+              sendResponse(request.id, null, {
+                code: -32002,
+                message: "Server not initialized"
+              });
+              return;
+            }
+            
+            sendResponse(request.id, { resources: [] });
             break;
             
           case 'tools/call':
             console.error("Handling tools/call request");
-            sendResponse('tools/call', {
+            if (!isInitialized) {
+              sendResponse(request.id, null, {
+                code: -32002,
+                message: "Server not initialized"
+              });
+              return;
+            }
+            
+            sendResponse(request.id, {
               content: [{
                 type: "text",
                 text: "Test tool executed successfully!"
@@ -121,7 +179,7 @@ process.stdin.on('data', (chunk) => {
             
           default:
             console.error("Unknown method:", request.method);
-            sendResponse('unknown', null, {
+            sendResponse(request.id, null, {
               code: -32601,
               message: "Method not found"
             });
@@ -129,6 +187,7 @@ process.stdin.on('data', (chunk) => {
       } catch (error) {
         console.error("Error parsing request:", error.message);
         console.error("Raw line:", line);
+        console.error("Stack:", error.stack);
       }
     }
   }
@@ -156,6 +215,7 @@ process.on('uncaughtException', (error) => {
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error("=== UNHANDLED REJECTION ===", reason);
+  console.error("Promise:", promise);
   process.exit(1);
 });
 
