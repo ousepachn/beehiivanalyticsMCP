@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "MCP server for Beehiiv API integration - manage newsletters, publications, posts, and subscribers",
   "main": "server.js",
-  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
