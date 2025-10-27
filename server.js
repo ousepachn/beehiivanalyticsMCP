@@ -3,32 +3,52 @@
 /**
  * Beehiiv MCP Server for Analytics
  * Provides read-only access to Beehiiv API for publications, posts, and segments analytics.
+ * Self-contained version using only Node.js built-in modules.
  */
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  ListPromptsRequestSchema,
-  ListResourcesRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import axios from "axios";
+import { createServer } from "http";
+import { spawn } from "child_process";
 
-// Initialize the MCP server
-const server = new Server(
-  {
-    name: "beehiiv-analytics",
-    version: "1.0.0",
-  },
-  {
-    capabilities: {
-      tools: {},
-      prompts: {},
-      resources: {},
+// Simple HTTP client using Node.js built-in fetch (Node 18+)
+async function makeRequest(method, url, headers = {}, body = null) {
+  const options = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
     },
+  };
+
+  if (body) {
+    options.body = JSON.stringify(body);
   }
-);
+
+  try {
+    const response = await fetch(url, options);
+    
+    if (!response.ok) {
+      const status = response.status;
+      if (status === 401) {
+        throw new Error("Invalid API key. Please check your BEEHIIV_API_KEY.");
+      } else if (status === 403) {
+        throw new Error("API access forbidden. Please check your API key permissions.");
+      } else if (status === 404) {
+        throw new Error("Resource not found.");
+      } else if (status >= 500) {
+        throw new Error("Beehiiv API server error. Please try again later.");
+      } else {
+        throw new Error(`API request failed with status ${status}: ${response.statusText}`);
+      }
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error.name === "TypeError" && error.message.includes("fetch")) {
+      throw new Error("Unable to connect to Beehiiv API. Please check your internet connection.");
+    }
+    throw error;
+  }
+}
 
 class BeehiivAPI {
   constructor(apiKey) {
@@ -36,96 +56,63 @@ class BeehiivAPI {
     this.baseUrl = "https://api.beehiiv.com/v2";
     this.headers = {
       Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
     };
   }
 
-  async makeRequest(method, endpoint, params = null) {
-    const url = `${this.baseUrl}${endpoint}`;
-    try {
-      const response = await axios({
-        method,
-        url,
-        headers: this.headers,
-        params,
-        timeout: 30000,
-      });
-      return response.data;
-    } catch (error) {
-      if (error.code === "ECONNABORTED") {
-        throw new Error("API request timed out. Please try again.");
-      } else if (error.code === "ENOTFOUND" || error.code === "ECONNREFUSED") {
-        throw new Error("Unable to connect to Beehiiv API. Please check your internet connection.");
-      } else if (error.response) {
-        const status = error.response.status;
-        if (status === 401) {
-          throw new Error("Invalid API key. Please check your BEEHIIV_API_KEY.");
-        } else if (status === 403) {
-          throw new Error("API access forbidden. Please check your API key permissions.");
-        } else if (status === 404) {
-          throw new Error("Resource not found.");
-        } else if (status >= 500) {
-          throw new Error("Beehiiv API server error. Please try again later.");
-        } else {
-          throw new Error(`API request failed with status ${status}: ${error.message}`);
-        }
-      } else {
-        throw new Error(`API request failed: ${error.message}`);
-      }
-    }
-  }
-
   async getPublications() {
-    const data = await this.makeRequest("GET", "/publications");
+    const data = await makeRequest("GET", `${this.baseUrl}/publications`, this.headers);
     return data.data || [];
   }
 
   async getPublicationDetails(publicationId) {
-    return await this.makeRequest("GET", `/publications/${publicationId}`);
+    return await makeRequest("GET", `${this.baseUrl}/publications/${publicationId}`, this.headers);
   }
 
   async listPosts(publicationId, options = {}) {
-    const params = {
-      limit: options.limit || 10,
-      page: options.page || 1,
+    const params = new URLSearchParams({
+      limit: (options.limit || 10).toString(),
+      page: (options.page || 1).toString(),
       status: options.status || "all",
       audience: options.audience || "all",
       platform: options.platform || "all",
       order_by: options.order_by || "created",
       direction: options.direction || "desc",
-    };
+    });
 
     if (options.expand) {
-      params.expand = options.expand.join(",");
+      params.append("expand", options.expand.join(","));
     }
 
-    return await this.makeRequest("GET", `/publications/${publicationId}/posts`, params);
+    const url = `${this.baseUrl}/publications/${publicationId}/posts?${params}`;
+    return await makeRequest("GET", url, this.headers);
   }
 
   async getPostDetails(publicationId, postId, expand = null) {
-    const params = {};
+    let url = `${this.baseUrl}/publications/${publicationId}/posts/${postId}`;
     if (expand) {
-      params.expand = expand.join(",");
+      const params = new URLSearchParams({ expand: expand.join(",") });
+      url += `?${params}`;
     }
-    return await this.makeRequest("GET", `/publications/${publicationId}/posts/${postId}`, params);
+    return await makeRequest("GET", url, this.headers);
   }
 
   async getPostsAggregateStats(publicationId, options = {}) {
-    const params = {
+    const params = new URLSearchParams({
       status: options.status || "confirmed",
       audience: options.audience || "all",
       platform: options.platform || "all",
-    };
-    return await this.makeRequest("GET", `/publications/${publicationId}/posts/stats`, params);
+    });
+    const url = `${this.baseUrl}/publications/${publicationId}/posts/stats?${params}`;
+    return await makeRequest("GET", url, this.headers);
   }
 
   async listSegments(publicationId) {
-    const data = await this.makeRequest("GET", `/publications/${publicationId}/segments`);
+    const data = await makeRequest("GET", `${this.baseUrl}/publications/${publicationId}/segments`, this.headers);
     return data.data || [];
   }
 
   async getSegmentDetails(publicationId, segmentId) {
-    return await this.makeRequest("GET", `/publications/${publicationId}/segments/${segmentId}`);
+    return await makeRequest("GET", `${this.baseUrl}/publications/${publicationId}/segments/${segmentId}`, this.headers);
   }
 }
 
@@ -138,10 +125,10 @@ if (!apiKey) {
 
 const client = new BeehiivAPI(apiKey);
 
-// List tools handler
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
+// Simple MCP protocol implementation
+class SimpleMCPServer {
+  constructor() {
+    this.tools = [
       {
         name: "list_publications",
         description: "List all publications accessible with the API key",
@@ -334,164 +321,197 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["publication_id", "segment_id"],
         },
       },
-    ],
-  };
-});
-
-// Call tool handler
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-
-  try {
-    switch (name) {
-      case "list_publications": {
-        const publications = await client.getPublications();
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(publications, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "get_publication_details": {
-        const { publication_id } = args;
-        const details = await client.getPublicationDetails(publication_id);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(details, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "list_posts": {
-        const {
-          publication_id,
-          limit,
-          page,
-          status,
-          audience,
-          platform,
-          order_by,
-          direction,
-          expand,
-        } = args;
-        const posts = await client.listPosts(publication_id, {
-          limit,
-          page,
-          status,
-          audience,
-          platform,
-          order_by,
-          direction,
-          expand,
-        });
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(posts, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "get_post_details": {
-        const { publication_id, post_id, expand } = args;
-        const details = await client.getPostDetails(publication_id, post_id, expand);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(details, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "get_posts_summary_stats": {
-        const { publication_id, status, audience, platform } = args;
-        const stats = await client.getPostsAggregateStats(publication_id, {
-          status,
-          audience,
-          platform,
-        });
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(stats, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "list_segments": {
-        const { publication_id } = args;
-        const segments = await client.listSegments(publication_id);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(segments, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "get_segment_details": {
-        const { publication_id, segment_id } = args;
-        const details = await client.getSegmentDetails(publication_id, segment_id);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(details, null, 2),
-            },
-          ],
-        };
-      }
-
-      default:
-        throw new Error(`Unknown tool: ${name}`);
-    }
-  } catch (error) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Error: ${error.message}`,
-        },
-      ],
-      isError: true,
-    };
+    ];
   }
-});
 
-// List prompts handler
-server.setRequestHandler(ListPromptsRequestSchema, async () => {
-  return {
-    prompts: [],
-  };
-});
+  async handleRequest(request) {
+    const { method, params, id } = request;
 
-// List resources handler
-server.setRequestHandler(ListResourcesRequestSchema, async () => {
-  return {
-    resources: [],
-  };
-});
+    try {
+      switch (method) {
+        case "initialize":
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: {
+              protocolVersion: "2025-06-18",
+              capabilities: {
+                tools: {},
+                prompts: {},
+                resources: {},
+              },
+              serverInfo: {
+                name: "beehiiv-analytics",
+                version: "1.0.0",
+              },
+            },
+          };
+
+        case "tools/list":
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: {
+              tools: this.tools,
+            },
+          };
+
+        case "prompts/list":
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: {
+              prompts: [],
+            },
+          };
+
+        case "resources/list":
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: {
+              resources: [],
+            },
+          };
+
+        case "tools/call":
+          return await this.handleToolCall(params, id);
+
+        default:
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: {
+              code: -32601,
+              message: "Method not found",
+            },
+          };
+      }
+    } catch (error) {
+      return {
+        jsonrpc: "2.0",
+        id,
+        error: {
+          code: -32603,
+          message: error.message,
+        },
+      };
+    }
+  }
+
+  async handleToolCall(params, id) {
+    const { name, arguments: args } = params;
+
+    try {
+      let result;
+      switch (name) {
+        case "list_publications":
+          result = await client.getPublications();
+          break;
+
+        case "get_publication_details":
+          result = await client.getPublicationDetails(args.publication_id);
+          break;
+
+        case "list_posts":
+          result = await client.listPosts(args.publication_id, {
+            limit: args.limit,
+            page: args.page,
+            status: args.status,
+            audience: args.audience,
+            platform: args.platform,
+            order_by: args.order_by,
+            direction: args.direction,
+            expand: args.expand,
+          });
+          break;
+
+        case "get_post_details":
+          result = await client.getPostDetails(args.publication_id, args.post_id, args.expand);
+          break;
+
+        case "get_posts_summary_stats":
+          result = await client.getPostsAggregateStats(args.publication_id, {
+            status: args.status,
+            audience: args.audience,
+            platform: args.platform,
+          });
+          break;
+
+        case "list_segments":
+          result = await client.listSegments(args.publication_id);
+          break;
+
+        case "get_segment_details":
+          result = await client.getSegmentDetails(args.publication_id, args.segment_id);
+          break;
+
+        default:
+          throw new Error(`Unknown tool: ${name}`);
+      }
+
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        },
+      };
+    } catch (error) {
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          content: [
+            {
+              type: "text",
+              text: `Error: ${error.message}`,
+            },
+          ],
+          isError: true,
+        },
+      };
+    }
+  }
+}
 
 // Start the server
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  const server = new SimpleMCPServer();
+  
   console.error("Beehiiv MCP server running on stdio");
+
+  // Handle stdin/stdout for MCP protocol
+  let buffer = "";
+  
+  process.stdin.on("data", async (chunk) => {
+    buffer += chunk.toString();
+    
+    // Process complete JSON-RPC messages
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || ""; // Keep incomplete line in buffer
+    
+    for (const line of lines) {
+      if (line.trim()) {
+        try {
+          const request = JSON.parse(line);
+          const response = await server.handleRequest(request);
+          console.log(JSON.stringify(response));
+        } catch (error) {
+          console.error("Error processing request:", error);
+        }
+      }
+    }
+  });
+
+  process.stdin.on("end", () => {
+    process.exit(0);
+  });
 }
 
 // Handle graceful shutdown
@@ -505,7 +525,6 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
-// Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
   process.exit(1);
