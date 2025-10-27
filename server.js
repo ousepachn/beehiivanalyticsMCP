@@ -1,162 +1,45 @@
 #!/usr/bin/env node
 
 /**
- * Beehiiv MCP Server - Proper Implementation
- * Implements the Beehiiv API tools as declared in manifest.json
+ * Beehiiv MCP Server - Minimal Working Version
+ * Focus on getting the basic MCP protocol working first
  */
 
 console.error("=== BEEHIIV MCP SERVER STARTING ===");
 console.error("Node.js version:", process.version);
 console.error("Platform:", process.platform);
 console.error("Architecture:", process.arch);
-console.error("Environment variables:", Object.keys(process.env).filter(k => k.includes('BEEHIIV')));
 console.error("API Key present:", !!process.env.BEEHIIV_API_KEY);
-console.error("API Key length:", process.env.BEEHIIV_API_KEY ? process.env.BEEHIIV_API_KEY.length : 0);
 
-// Test basic functionality
-try {
-  console.error("Testing basic imports...");
-  const https = require('https');
-  const http = require('http');
-  const { URL } = require('url');
-  console.error("✓ Basic imports successful");
-  
-  // Test JSON parsing
-  const testObj = { test: "value" };
-  const jsonStr = JSON.stringify(testObj);
-  const parsed = JSON.parse(jsonStr);
-  console.error("✓ JSON operations successful");
-  
-  console.error("=== BASIC TESTS PASSED ===");
-  
-} catch (error) {
-  console.error("❌ Basic test failed:", error.message);
-  console.error("Stack:", error.stack);
-  process.exit(1);
-}
-
-// HTTP request helper
-function makeRequest(method, url, headers = {}) {
-  return new Promise((resolve, reject) => {
-    console.error(`Making ${method} request to:`, url);
-    
-    const urlObj = new URL(url);
-    const options = {
-      hostname: urlObj.hostname,
-      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
-      path: urlObj.pathname + urlObj.search,
-      method: method,
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Beehiiv-MCP-Server/1.0.0',
-        ...headers
-      },
-      timeout: 30000
-    };
-
-    const req = (urlObj.protocol === 'https:' ? https : http).request(options, (res) => {
-      console.error(`Response status: ${res.statusCode}`);
-      
-      let data = '';
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      
-      res.on('end', () => {
-        console.error(`Response data length: ${data.length} bytes`);
-        try {
-          const parsed = JSON.parse(data);
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(parsed);
-          } else {
-            reject(new Error(`HTTP ${res.statusCode}: ${parsed.message || 'Unknown error'}`));
-          }
-        } catch (error) {
-          reject(new Error(`Failed to parse response: ${error.message}`));
-        }
-      });
-    });
-
-    req.on('error', (error) => {
-      console.error(`Request error:`, error.message);
-      reject(error);
-    });
-
-    req.on('timeout', () => {
-      console.error(`Request timeout`);
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-
-    req.end();
-  });
-}
-
-// Beehiiv API client
-class BeehiivAPI {
-  constructor(apiKey) {
-    this.apiKey = apiKey;
-    this.baseUrl = 'https://api.beehiiv.com/v2';
-    this.headers = {
-      'Authorization': `Bearer ${apiKey}`
-    };
-    console.error("✓ BeehiivAPI initialized");
-  }
-
-  async getPublications() {
-    return await makeRequest('GET', `${this.baseUrl}/publications`, this.headers);
-  }
-
-  async getPublicationDetails(publicationId) {
-    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}`, this.headers);
-  }
-
-  async getPosts(publicationId, limit = 10) {
-    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/posts?limit=${limit}`, this.headers);
-  }
-
-  async getPostDetails(publicationId, postId) {
-    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/posts/${postId}`, this.headers);
-  }
-
-  async getSubscribers(publicationId, limit = 10) {
-    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/subscribers?limit=${limit}`, this.headers);
-  }
-
-  async getSubscriberDetails(publicationId, subscriberId) {
-    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/subscribers/${subscriberId}`, this.headers);
-  }
-
-  async getSegments(publicationId) {
-    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/segments`, this.headers);
-  }
-
-  async getSegmentDetails(publicationId, segmentId) {
-    return await makeRequest('GET', `${this.baseUrl}/publications/${publicationId}/segments/${segmentId}`, this.headers);
-  }
-}
-
-// Get API key from environment
-const apiKey = process.env.BEEHIIV_API_KEY;
-if (!apiKey) {
+// Check API key
+if (!process.env.BEEHIIV_API_KEY) {
   console.error("❌ BEEHIIV_API_KEY environment variable is required");
   process.exit(1);
 }
 
-const client = new BeehiivAPI(apiKey);
+console.error("✓ API key found, length:", process.env.BEEHIIV_API_KEY.length);
 
-// MCP Server implementation
-let requestId = 0;
-let isInitialized = false;
-
+// Simple response function
 function sendResponse(id, result, error = null) {
   const response = {
     jsonrpc: "2.0",
-    id: id,
-    ...(error ? { error } : { result })
+    id: id
   };
-  console.log(JSON.stringify(response));
-  console.error(`Sent response ID ${id}:`, error ? 'ERROR' : 'SUCCESS');
+  
+  if (error) {
+    response.error = error;
+  } else {
+    response.result = result;
+  }
+  
+  const jsonStr = JSON.stringify(response);
+  console.error("Sending response:", jsonStr.substring(0, 100) + "...");
+  console.log(jsonStr);
+  
+  // Force flush
+  if (process.stdout.write) {
+    process.stdout.write('\n');
+  }
 }
 
 function sendNotification(method, params = {}) {
@@ -165,14 +48,22 @@ function sendNotification(method, params = {}) {
     method: method,
     params: params
   };
-  console.log(JSON.stringify(notification));
-  console.error(`Sent notification: ${method}`);
+  
+  const jsonStr = JSON.stringify(notification);
+  console.error("Sending notification:", jsonStr);
+  console.log(jsonStr);
+  
+  // Force flush
+  if (process.stdout.write) {
+    process.stdout.write('\n');
+  }
 }
 
 console.error("=== STARTING MCP PROTOCOL HANDLER ===");
 
-// Handle stdin
+let isInitialized = false;
 let buffer = "";
+
 process.stdin.on('data', (chunk) => {
   const data = chunk.toString();
   console.error("Received data:", data.length, "bytes");
@@ -191,14 +82,6 @@ process.stdin.on('data', (chunk) => {
         switch (request.method) {
           case 'initialize':
             console.error("Handling initialize request");
-            if (isInitialized) {
-              sendResponse(request.id, null, {
-                code: -32002,
-                message: "Server already initialized"
-              });
-              return;
-            }
-            
             sendResponse(request.id, {
               protocolVersion: "2025-06-18",
               capabilities: {
@@ -212,12 +95,12 @@ process.stdin.on('data', (chunk) => {
               }
             });
             
-            // Send initialized notification
+            // Send initialized notification after a short delay
             setTimeout(() => {
               sendNotification("initialized");
               isInitialized = true;
               console.error("✓ Server initialized successfully");
-            }, 100);
+            }, 50);
             break;
             
           case 'tools/list':
@@ -253,112 +136,6 @@ process.stdin.on('data', (chunk) => {
                       }
                     },
                     required: ["publication_id"]
-                  }
-                },
-                {
-                  name: "get_posts",
-                  description: "Get posts for a publication",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      publication_id: {
-                        type: "string",
-                        description: "The ID of the publication"
-                      },
-                      limit: {
-                        type: "number",
-                        description: "Number of posts to return (default: 10)",
-                        default: 10
-                      }
-                    },
-                    required: ["publication_id"]
-                  }
-                },
-                {
-                  name: "get_post_details",
-                  description: "Get detailed information about a specific post",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      publication_id: {
-                        type: "string",
-                        description: "The ID of the publication"
-                      },
-                      post_id: {
-                        type: "string",
-                        description: "The ID of the post"
-                      }
-                    },
-                    required: ["publication_id", "post_id"]
-                  }
-                },
-                {
-                  name: "get_subscribers",
-                  description: "Get subscribers for a publication",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      publication_id: {
-                        type: "string",
-                        description: "The ID of the publication"
-                      },
-                      limit: {
-                        type: "number",
-                        description: "Number of subscribers to return (default: 10)",
-                        default: 10
-                      }
-                    },
-                    required: ["publication_id"]
-                  }
-                },
-                {
-                  name: "get_subscriber_details",
-                  description: "Get detailed information about a specific subscriber",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      publication_id: {
-                        type: "string",
-                        description: "The ID of the publication"
-                      },
-                      subscriber_id: {
-                        type: "string",
-                        description: "The ID of the subscriber"
-                      }
-                    },
-                    required: ["publication_id", "subscriber_id"]
-                  }
-                },
-                {
-                  name: "get_segments",
-                  description: "Get segments for a publication",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      publication_id: {
-                        type: "string",
-                        description: "The ID of the publication"
-                      }
-                    },
-                    required: ["publication_id"]
-                  }
-                },
-                {
-                  name: "get_segment_details",
-                  description: "Get detailed information about a specific segment",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      publication_id: {
-                        type: "string",
-                        description: "The ID of the publication"
-                      },
-                      segment_id: {
-                        type: "string",
-                        description: "The ID of the segment"
-                      }
-                    },
-                    required: ["publication_id", "segment_id"]
                   }
                 }
               ]
@@ -404,53 +181,13 @@ process.stdin.on('data', (chunk) => {
             const { name, arguments: args } = request.params;
             console.error(`Executing tool: ${name} with args:`, args);
             
-            // Handle tool execution asynchronously
-            (async () => {
-              try {
-                let result;
-                switch (name) {
-                  case 'get_publications':
-                    result = await client.getPublications();
-                    break;
-                  case 'get_publication_details':
-                    result = await client.getPublicationDetails(args.publication_id);
-                    break;
-                  case 'get_posts':
-                    result = await client.getPosts(args.publication_id, args.limit || 10);
-                    break;
-                  case 'get_post_details':
-                    result = await client.getPostDetails(args.publication_id, args.post_id);
-                    break;
-                  case 'get_subscribers':
-                    result = await client.getSubscribers(args.publication_id, args.limit || 10);
-                    break;
-                  case 'get_subscriber_details':
-                    result = await client.getSubscriberDetails(args.publication_id, args.subscriber_id);
-                    break;
-                  case 'get_segments':
-                    result = await client.getSegments(args.publication_id);
-                    break;
-                  case 'get_segment_details':
-                    result = await client.getSegmentDetails(args.publication_id, args.segment_id);
-                    break;
-                  default:
-                    throw new Error(`Unknown tool: ${name}`);
-                }
-                
-                sendResponse(request.id, {
-                  content: [{
-                    type: "text",
-                    text: JSON.stringify(result, null, 2)
-                  }]
-                });
-              } catch (error) {
-                console.error(`Tool execution error:`, error.message);
-                sendResponse(request.id, null, {
-                  code: -32603,
-                  message: `Tool execution failed: ${error.message}`
-                });
-              }
-            })();
+            // Simple test response for now
+            sendResponse(request.id, {
+              content: [{
+                type: "text",
+                text: `Tool ${name} executed successfully! Args: ${JSON.stringify(args)}`
+              }]
+            });
             break;
             
           default:
@@ -491,7 +228,6 @@ process.on('uncaughtException', (error) => {
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error("=== UNHANDLED REJECTION ===", reason);
-  console.error("Promise:", promise);
   process.exit(1);
 });
 
