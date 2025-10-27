@@ -1,648 +1,172 @@
 #!/usr/bin/env node
 
 /**
- * Beehiiv MCP Server for Analytics
- * Provides read-only access to Beehiiv API for publications, posts, and segments analytics.
- * Compatible with older Node.js versions using https module.
+ * Minimal Beehiiv MCP Server Test
+ * This is a simplified version to test basic functionality
  */
 
-import https from "https";
-import http from "http";
-import { URL } from "url";
+console.error("=== BEEHIIV MCP SERVER STARTING ===");
+console.error("Node.js version:", process.version);
+console.error("Platform:", process.platform);
+console.error("Architecture:", process.arch);
+console.error("Environment variables:", Object.keys(process.env).filter(k => k.includes('BEEHIIV')));
+console.error("API Key present:", !!process.env.BEEHIIV_API_KEY);
+console.error("API Key length:", process.env.BEEHIIV_API_KEY ? process.env.BEEHIIV_API_KEY.length : 0);
 
-// Enhanced logging function
-function log(level, message, data = null) {
-  const timestamp = new Date().toISOString();
-  const logEntry = {
-    timestamp,
-    level,
-    message,
-    ...(data && { data })
-  };
+// Test basic functionality
+try {
+  console.error("Testing basic imports...");
+  const https = require('https');
+  const http = require('http');
+  const { URL } = require('url');
+  console.error("✓ Basic imports successful");
   
-  // Log to stderr so it appears in Claude Desktop logs
-  console.error(`[${timestamp}] [${level}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
-}
-
-// HTTP client using Node.js built-in modules
-function makeRequest(method, urlString, headers = {}, body = null) {
-  return new Promise((resolve, reject) => {
-    log("DEBUG", `Making ${method} request to ${urlString}`);
-    
-    const url = new URL(urlString);
-    const isHttps = url.protocol === "https:";
-    const client = isHttps ? https : http;
-    
-    const options = {
-      hostname: url.hostname,
-      port: url.port || (isHttps ? 443 : 80),
-      path: url.pathname + url.search,
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        ...headers,
-      },
-      timeout: 30000,
-    };
-
-    log("DEBUG", "Request options", { 
-      hostname: options.hostname, 
-      port: options.port, 
-      path: options.path,
-      method: options.method,
-      headers: options.headers
-    });
-
-    const req = client.request(options, (res) => {
-      log("DEBUG", `Response received: ${res.statusCode} ${res.statusMessage}`);
-      
-      let data = "";
-      
-      res.on("data", (chunk) => {
-        data += chunk;
-      });
-      
-      res.on("end", () => {
-        try {
-          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-            let errorMessage;
-            if (res.statusCode === 401) {
-              errorMessage = "Invalid API key. Please check your BEEHIIV_API_KEY.";
-            } else if (res.statusCode === 403) {
-              errorMessage = "API access forbidden. Please check your API key permissions.";
-            } else if (res.statusCode === 404) {
-              errorMessage = "Resource not found.";
-            } else if (res.statusCode && res.statusCode >= 500) {
-              errorMessage = "Beehiiv API server error. Please try again later.";
-            } else {
-              errorMessage = `API request failed with status ${res.statusCode}: ${res.statusMessage}`;
-            }
-            log("ERROR", errorMessage, { statusCode: res.statusCode, responseData: data });
-            reject(new Error(errorMessage));
-            return;
-          }
-          
-          const jsonData = JSON.parse(data);
-          log("DEBUG", "Response parsed successfully", { dataLength: data.length });
-          resolve(jsonData);
-        } catch (error) {
-          log("ERROR", `Failed to parse response: ${error.message}`, { responseData: data });
-          reject(new Error(`Failed to parse response: ${error.message}`));
-        }
-      });
-    });
-
-    req.on("error", (error) => {
-      log("ERROR", `Request error: ${error.message}`, { errorCode: error.code });
-      if (error.code === "ENOTFOUND" || error.code === "ECONNREFUSED") {
-        reject(new Error("Unable to connect to Beehiiv API. Please check your internet connection."));
-      } else if (error.code === "ECONNABORTED") {
-        reject(new Error("API request timed out. Please try again."));
-      } else {
-        reject(new Error(`API request failed: ${error.message}`));
-      }
-    });
-
-    req.on("timeout", () => {
-      log("ERROR", "Request timeout after 30 seconds");
-      req.destroy();
-      reject(new Error("API request timed out. Please try again."));
-    });
-
-    if (body) {
-      log("DEBUG", "Sending request body", { bodyLength: JSON.stringify(body).length });
-      req.write(JSON.stringify(body));
-    }
-    
-    req.end();
-  });
-}
-
-class BeehiivAPI {
-  constructor(apiKey) {
-    log("INFO", "Initializing BeehiivAPI client");
-    this.apiKey = apiKey;
-    this.baseUrl = "https://api.beehiiv.com/v2";
-    this.headers = {
-      Authorization: `Bearer ${apiKey}`,
-    };
-    log("DEBUG", "BeehiivAPI client initialized", { 
-      baseUrl: this.baseUrl, 
-      hasApiKey: !!this.apiKey,
-      apiKeyLength: this.apiKey ? this.apiKey.length : 0
-    });
-  }
-
-  async getPublications() {
-    const data = await makeRequest("GET", `${this.baseUrl}/publications`, this.headers);
-    return data.data || [];
-  }
-
-  async getPublicationDetails(publicationId) {
-    return await makeRequest("GET", `${this.baseUrl}/publications/${publicationId}`, this.headers);
-  }
-
-  async listPosts(publicationId, options = {}) {
-    const params = new URLSearchParams({
-      limit: (options.limit || 10).toString(),
-      page: (options.page || 1).toString(),
-      status: options.status || "all",
-      audience: options.audience || "all",
-      platform: options.platform || "all",
-      order_by: options.order_by || "created",
-      direction: options.direction || "desc",
-    });
-
-    if (options.expand) {
-      params.append("expand", options.expand.join(","));
-    }
-
-    const url = `${this.baseUrl}/publications/${publicationId}/posts?${params}`;
-    return await makeRequest("GET", url, this.headers);
-  }
-
-  async getPostDetails(publicationId, postId, expand = null) {
-    let url = `${this.baseUrl}/publications/${publicationId}/posts/${postId}`;
-    if (expand) {
-      const params = new URLSearchParams({ expand: expand.join(",") });
-      url += `?${params}`;
-    }
-    return await makeRequest("GET", url, this.headers);
-  }
-
-  async getPostsAggregateStats(publicationId, options = {}) {
-    const params = new URLSearchParams({
-      status: options.status || "confirmed",
-      audience: options.audience || "all",
-      platform: options.platform || "all",
-    });
-    const url = `${this.baseUrl}/publications/${publicationId}/posts/stats?${params}`;
-    return await makeRequest("GET", url, this.headers);
-  }
-
-  async listSegments(publicationId) {
-    const data = await makeRequest("GET", `${this.baseUrl}/publications/${publicationId}/segments`, this.headers);
-    return data.data || [];
-  }
-
-  async getSegmentDetails(publicationId, segmentId) {
-    return await makeRequest("GET", `${this.baseUrl}/publications/${publicationId}/segments/${segmentId}`, this.headers);
-  }
-}
-
-// Get API key from environment
-log("INFO", "Starting Beehiiv MCP Server");
-log("DEBUG", "Environment check", { 
-  nodeVersion: process.version,
-  platform: process.platform,
-  arch: process.arch,
-  hasApiKey: !!process.env.BEEHIIV_API_KEY,
-  apiKeyLength: process.env.BEEHIIV_API_KEY ? process.env.BEEHIIV_API_KEY.length : 0
-});
-
-const apiKey = process.env.BEEHIIV_API_KEY;
-if (!apiKey) {
-  log("ERROR", "BEEHIIV_API_KEY environment variable is required");
-  console.error("Error: BEEHIIV_API_KEY environment variable is required");
+  // Test JSON parsing
+  const testObj = { test: "value" };
+  const jsonStr = JSON.stringify(testObj);
+  const parsed = JSON.parse(jsonStr);
+  console.error("✓ JSON operations successful");
+  
+  console.error("=== BASIC TESTS PASSED ===");
+  
+} catch (error) {
+  console.error("❌ Basic test failed:", error.message);
+  console.error("Stack:", error.stack);
   process.exit(1);
 }
 
-const client = new BeehiivAPI(apiKey);
+// Simple MCP server implementation
+let requestId = 0;
 
-// Simple MCP protocol implementation
-class SimpleMCPServer {
-  constructor() {
-    this.tools = [
-      {
-        name: "list_publications",
-        description: "List all publications accessible with the API key",
-        inputSchema: {
-          type: "object",
-          properties: {},
-          required: [],
-        },
-      },
-      {
-        name: "get_publication_details",
-        description: "Get detailed information about a specific publication",
-        inputSchema: {
-          type: "object",
-          properties: {
-            publication_id: {
-              type: "string",
-              description: "The publication ID (e.g., pub_00000000-0000-0000-0000-000000000000)",
-            },
-          },
-          required: ["publication_id"],
-        },
-      },
-      {
-        name: "list_posts",
-        description: "List posts from a publication with various filters",
-        inputSchema: {
-          type: "object",
-          properties: {
-            publication_id: {
-              type: "string",
-              description: "The publication ID",
-            },
-            limit: {
-              type: "integer",
-              description: "Number of posts to return (1-100, default: 10)",
-              minimum: 1,
-              maximum: 100,
-              default: 10,
-            },
-            page: {
-              type: "integer",
-              description: "Page number for pagination (default: 1)",
-              minimum: 1,
-              default: 1,
-            },
-            status: {
-              type: "string",
-              description: "Filter by post status",
-              enum: ["draft", "confirmed", "archived", "all"],
-              default: "all",
-            },
-            audience: {
-              type: "string",
-              description: "Filter by audience type",
-              enum: ["free", "premium", "all"],
-              default: "all",
-            },
-            platform: {
-              type: "string",
-              description: "Filter by platform",
-              enum: ["web", "email", "both", "all"],
-              default: "all",
-            },
-            order_by: {
-              type: "string",
-              description: "Field to sort by",
-              enum: ["created", "publish_date", "displayed_date"],
-              default: "created",
-            },
-            direction: {
-              type: "string",
-              description: "Sort direction",
-              enum: ["asc", "desc"],
-              default: "desc",
-            },
-            expand: {
-              type: "array",
-              items: {
-                type: "string",
-                enum: [
-                  "stats",
-                  "free_web_content",
-                  "free_email_content",
-                  "free_rss_content",
-                  "premium_web_content",
-                  "premium_email_content",
-                ],
-              },
-              description: "Additional data to include in response",
-            },
-          },
-          required: ["publication_id"],
-        },
-      },
-      {
-        name: "get_post_details",
-        description: "Get detailed information about a specific post",
-        inputSchema: {
-          type: "object",
-          properties: {
-            publication_id: {
-              type: "string",
-              description: "The publication ID",
-            },
-            post_id: {
-              type: "string",
-              description: "The post ID (e.g., post_00000000-0000-0000-0000-000000000000)",
-            },
-            expand: {
-              type: "array",
-              items: {
-                type: "string",
-                enum: [
-                  "stats",
-                  "free_web_content",
-                  "free_email_content",
-                  "free_rss_content",
-                  "premium_web_content",
-                  "premium_email_content",
-                ],
-              },
-              description: "Additional data to include in response",
-            },
-          },
-          required: ["publication_id", "post_id"],
-        },
-      },
-      {
-        name: "get_posts_summary_stats",
-        description: "Get aggregate statistics for all posts in a publication",
-        inputSchema: {
-          type: "object",
-          properties: {
-            publication_id: {
-              type: "string",
-              description: "The publication ID",
-            },
-            status: {
-              type: "string",
-              description: "Filter by post status for stats",
-              enum: ["draft", "confirmed", "archived", "all"],
-              default: "confirmed",
-            },
-            audience: {
-              type: "string",
-              description: "Filter by audience type for stats",
-              enum: ["free", "premium", "all"],
-              default: "all",
-            },
-            platform: {
-              type: "string",
-              description: "Filter by platform for stats",
-              enum: ["web", "email", "both", "all"],
-              default: "all",
-            },
-          },
-          required: ["publication_id"],
-        },
-      },
-      {
-        name: "list_segments",
-        description: "List all segments for a publication",
-        inputSchema: {
-          type: "object",
-          properties: {
-            publication_id: {
-              type: "string",
-              description: "The publication ID",
-            },
-          },
-          required: ["publication_id"],
-        },
-      },
-      {
-        name: "get_segment_details",
-        description: "Get detailed information about a specific segment",
-        inputSchema: {
-          type: "object",
-          properties: {
-            publication_id: {
-              type: "string",
-              description: "The publication ID",
-            },
-            segment_id: {
-              type: "string",
-              description: "The segment ID",
-            },
-          },
-          required: ["publication_id", "segment_id"],
-        },
-      },
-    ];
-  }
+function sendResponse(method, result, error = null) {
+  const response = {
+    jsonrpc: "2.0",
+    id: requestId++,
+    ...(error ? { error } : { result })
+  };
+  console.log(JSON.stringify(response));
+  console.error(`Sent response for ${method}:`, error ? 'ERROR' : 'SUCCESS');
+}
 
-  async handleRequest(request) {
-    const { method, params, id } = request;
-    log("DEBUG", `Handling MCP request: ${method}`, { requestId: id, method, params });
+console.error("=== STARTING MCP PROTOCOL HANDLER ===");
 
-    try {
-      switch (method) {
-        case "initialize":
-          return {
-            jsonrpc: "2.0",
-            id,
-            result: {
+// Handle stdin
+let buffer = "";
+process.stdin.on('data', (chunk) => {
+  const data = chunk.toString();
+  console.error("Received data:", data.length, "bytes");
+  buffer += data;
+  
+  const lines = buffer.split('\n');
+  buffer = lines.pop() || '';
+  
+  for (const line of lines) {
+    if (line.trim()) {
+      try {
+        console.error("Parsing line:", line.substring(0, 100) + (line.length > 100 ? '...' : ''));
+        const request = JSON.parse(line);
+        console.error("Parsed request:", request.method, "ID:", request.id);
+        
+        switch (request.method) {
+          case 'initialize':
+            console.error("Handling initialize request");
+            sendResponse('initialize', {
               protocolVersion: "2025-06-18",
               capabilities: {
                 tools: {},
                 prompts: {},
-                resources: {},
+                resources: {}
               },
               serverInfo: {
-                name: "beehiiv-analytics",
-                version: "1.0.0",
-              },
-            },
-          };
-
-        case "tools/list":
-          return {
-            jsonrpc: "2.0",
-            id,
-            result: {
-              tools: this.tools,
-            },
-          };
-
-        case "prompts/list":
-          return {
-            jsonrpc: "2.0",
-            id,
-            result: {
-              prompts: [],
-            },
-          };
-
-        case "resources/list":
-          return {
-            jsonrpc: "2.0",
-            id,
-            result: {
-              resources: [],
-            },
-          };
-
-        case "tools/call":
-          return await this.handleToolCall(params, id);
-
-        default:
-          return {
-            jsonrpc: "2.0",
-            id,
-            error: {
+                name: "beehiiv-test",
+                version: "1.0.0"
+              }
+            });
+            break;
+            
+          case 'tools/list':
+            console.error("Handling tools/list request");
+            sendResponse('tools/list', {
+              tools: [{
+                name: "test_tool",
+                description: "A simple test tool",
+                inputSchema: {
+                  type: "object",
+                  properties: {},
+                  required: []
+                }
+              }]
+            });
+            break;
+            
+          case 'prompts/list':
+            console.error("Handling prompts/list request");
+            sendResponse('prompts/list', { prompts: [] });
+            break;
+            
+          case 'resources/list':
+            console.error("Handling resources/list request");
+            sendResponse('resources/list', { resources: [] });
+            break;
+            
+          case 'tools/call':
+            console.error("Handling tools/call request");
+            sendResponse('tools/call', {
+              content: [{
+                type: "text",
+                text: "Test tool executed successfully!"
+              }]
+            });
+            break;
+            
+          default:
+            console.error("Unknown method:", request.method);
+            sendResponse('unknown', null, {
               code: -32601,
-              message: "Method not found",
-            },
-          };
-      }
-    } catch (error) {
-      return {
-        jsonrpc: "2.0",
-        id,
-        error: {
-          code: -32603,
-          message: error.message,
-        },
-      };
-    }
-  }
-
-  async handleToolCall(params, id) {
-    const { name, arguments: args } = params;
-    log("INFO", `Executing tool: ${name}`, { toolName: name, arguments: args });
-
-    try {
-      let result;
-      switch (name) {
-        case "list_publications":
-          result = await client.getPublications();
-          break;
-
-        case "get_publication_details":
-          result = await client.getPublicationDetails(args.publication_id);
-          break;
-
-        case "list_posts":
-          result = await client.listPosts(args.publication_id, {
-            limit: args.limit,
-            page: args.page,
-            status: args.status,
-            audience: args.audience,
-            platform: args.platform,
-            order_by: args.order_by,
-            direction: args.direction,
-            expand: args.expand,
-          });
-          break;
-
-        case "get_post_details":
-          result = await client.getPostDetails(args.publication_id, args.post_id, args.expand);
-          break;
-
-        case "get_posts_summary_stats":
-          result = await client.getPostsAggregateStats(args.publication_id, {
-            status: args.status,
-            audience: args.audience,
-            platform: args.platform,
-          });
-          break;
-
-        case "list_segments":
-          result = await client.listSegments(args.publication_id);
-          break;
-
-        case "get_segment_details":
-          result = await client.getSegmentDetails(args.publication_id, args.segment_id);
-          break;
-
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
-
-      return {
-        jsonrpc: "2.0",
-        id,
-        result: {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        },
-      };
-    } catch (error) {
-      return {
-        jsonrpc: "2.0",
-        id,
-        result: {
-          content: [
-            {
-              type: "text",
-              text: `Error: ${error.message}`,
-            },
-          ],
-          isError: true,
-        },
-      };
-    }
-  }
-}
-
-// Start the server
-async function main() {
-  log("INFO", "Initializing MCP server");
-  const server = new SimpleMCPServer();
-  
-  log("INFO", "Beehiiv MCP server running on stdio");
-  console.error("Beehiiv MCP server running on stdio");
-
-  // Handle stdin/stdout for MCP protocol
-  let buffer = "";
-  
-  process.stdin.on("data", async (chunk) => {
-    const chunkStr = chunk.toString();
-    log("DEBUG", "Received data chunk", { chunkLength: chunkStr.length });
-    buffer += chunkStr;
-    
-    // Process complete JSON-RPC messages
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || ""; // Keep incomplete line in buffer
-    
-    for (const line of lines) {
-      if (line.trim()) {
-        try {
-          log("DEBUG", "Parsing JSON-RPC request", { lineLength: line.length });
-          const request = JSON.parse(line);
-          const response = await server.handleRequest(request);
-          log("DEBUG", "Sending JSON-RPC response", { responseId: response.id });
-          console.log(JSON.stringify(response));
-        } catch (error) {
-          log("ERROR", "Error processing request", { error: error.message, stack: error.stack });
-          console.error("Error processing request:", error);
+              message: "Method not found"
+            });
         }
+      } catch (error) {
+        console.error("Error parsing request:", error.message);
+        console.error("Raw line:", line);
       }
     }
-  });
+  }
+});
 
-  process.stdin.on("end", () => {
-    log("INFO", "Stdin ended, shutting down");
-    process.exit(0);
-  });
-
-  process.stdin.on("error", (error) => {
-    log("ERROR", "Stdin error", { error: error.message });
-  });
-
-  process.stdout.on("error", (error) => {
-    log("ERROR", "Stdout error", { error: error.message });
-  });
-}
-
-// Handle graceful shutdown
-process.on("SIGINT", () => {
-  log("INFO", "Received SIGINT, shutting down gracefully...");
-  console.error("Received SIGINT, shutting down gracefully...");
+process.stdin.on('end', () => {
+  console.error("=== STDIN ENDED ===");
   process.exit(0);
 });
 
-process.on("SIGTERM", () => {
-  log("INFO", "Received SIGTERM, shutting down gracefully...");
-  console.error("Received SIGTERM, shutting down gracefully...");
+process.stdin.on('error', (error) => {
+  console.error("=== STDIN ERROR ===", error.message);
+});
+
+process.stdout.on('error', (error) => {
+  console.error("=== STDOUT ERROR ===", error.message);
+});
+
+// Error handlers
+process.on('uncaughtException', (error) => {
+  console.error("=== UNCAUGHT EXCEPTION ===", error.message);
+  console.error("Stack:", error.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error("=== UNHANDLED REJECTION ===", reason);
+  process.exit(1);
+});
+
+process.on('SIGINT', () => {
+  console.error("=== SIGINT RECEIVED ===");
   process.exit(0);
 });
 
-process.on("uncaughtException", (error) => {
-  log("ERROR", "Uncaught exception", { error: error.message, stack: error.stack });
-  console.error("Uncaught exception:", error);
-  process.exit(1);
+process.on('SIGTERM', () => {
+  console.error("=== SIGTERM RECEIVED ===");
+  process.exit(0);
 });
 
-process.on("unhandledRejection", (reason, promise) => {
-  log("ERROR", "Unhandled rejection", { reason: reason.toString(), promise: promise.toString() });
-  console.error("Unhandled rejection at:", promise, "reason:", reason);
-  process.exit(1);
-});
-
-main().catch((error) => {
-  log("ERROR", "Fatal error in main", { error: error.message, stack: error.stack });
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+console.error("=== SERVER READY, WAITING FOR REQUESTS ===");
