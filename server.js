@@ -97,6 +97,112 @@ process.stdin.on('data', (chunk) => {
                 },
                 required: ["publication_id"]
               }
+            },
+            {
+              name: "get_posts",
+              description: "Get posts for a publication",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  publication_id: {
+                    type: "string",
+                    description: "The ID of the publication"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Number of posts to return (default: 10)",
+                    default: 10
+                  }
+                },
+                required: ["publication_id"]
+              }
+            },
+            {
+              name: "get_post_details",
+              description: "Get detailed information about a specific post",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  publication_id: {
+                    type: "string",
+                    description: "The ID of the publication"
+                  },
+                  post_id: {
+                    type: "string",
+                    description: "The ID of the post"
+                  }
+                },
+                required: ["publication_id", "post_id"]
+              }
+            },
+            {
+              name: "get_subscribers",
+              description: "Get subscribers for a publication",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  publication_id: {
+                    type: "string",
+                    description: "The ID of the publication"
+                  },
+                  limit: {
+                    type: "number",
+                    description: "Number of subscribers to return (default: 10)",
+                    default: 10
+                  }
+                },
+                required: ["publication_id"]
+              }
+            },
+            {
+              name: "get_subscriber_details",
+              description: "Get detailed information about a specific subscriber",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  publication_id: {
+                    type: "string",
+                    description: "The ID of the publication"
+                  },
+                  subscriber_id: {
+                    type: "string",
+                    description: "The ID of the subscriber"
+                  }
+                },
+                required: ["publication_id", "subscriber_id"]
+              }
+            },
+            {
+              name: "get_segments",
+              description: "Get segments for a publication",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  publication_id: {
+                    type: "string",
+                    description: "The ID of the publication"
+                  }
+                },
+                required: ["publication_id"]
+              }
+            },
+            {
+              name: "get_segment_details",
+              description: "Get detailed information about a specific segment",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  publication_id: {
+                    type: "string",
+                    description: "The ID of the publication"
+                  },
+                  segment_id: {
+                    type: "string",
+                    description: "The ID of the segment"
+                  }
+                },
+                required: ["publication_id", "segment_id"]
+              }
             }
           ]
         });
@@ -141,11 +247,41 @@ process.stdin.on('data', (chunk) => {
         const { name, arguments: args } = request.params;
         console.error(`Executing tool: ${name} with args:`, args);
         
-        // Simple test response for now
+        // Handle all 8 tools with test responses
+        let result;
+        switch (name) {
+          case 'get_publications':
+            result = `Publications list: [Test publication data would be returned here]`;
+            break;
+          case 'get_publication_details':
+            result = `Publication details for ID ${args.publication_id}: [Detailed publication info would be returned here]`;
+            break;
+          case 'get_posts':
+            result = `Posts for publication ${args.publication_id} (limit: ${args.limit || 10}): [Posts data would be returned here]`;
+            break;
+          case 'get_post_details':
+            result = `Post details for publication ${args.publication_id}, post ${args.post_id}: [Detailed post info would be returned here]`;
+            break;
+          case 'get_subscribers':
+            result = `Subscribers for publication ${args.publication_id} (limit: ${args.limit || 10}): [Subscribers data would be returned here]`;
+            break;
+          case 'get_subscriber_details':
+            result = `Subscriber details for publication ${args.publication_id}, subscriber ${args.subscriber_id}: [Detailed subscriber info would be returned here]`;
+            break;
+          case 'get_segments':
+            result = `Segments for publication ${args.publication_id}: [Segments data would be returned here]`;
+            break;
+          case 'get_segment_details':
+            result = `Segment details for publication ${args.publication_id}, segment ${args.segment_id}: [Detailed segment info would be returned here]`;
+            break;
+          default:
+            throw new Error(`Unknown tool: ${name}`);
+        }
+        
         sendResponse(request.id, {
           content: [{
             type: "text",
-            text: `Tool ${name} executed successfully! Args: ${JSON.stringify(args)}`
+            text: result
           }]
         });
         break;
