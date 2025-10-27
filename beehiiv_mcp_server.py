@@ -55,18 +55,24 @@ class BeehiivAPI:
         except requests.exceptions.Timeout:
             raise Exception("API request timed out. Please try again.")
         except requests.exceptions.ConnectionError:
-            raise Exception("Unable to connect to Beehiiv API. Please check your internet connection.")
+            raise Exception(
+                "Unable to connect to Beehiiv API. Please check your internet connection."
+            )
         except requests.exceptions.HTTPError as e:
             if response.status_code == 401:
                 raise Exception("Invalid API key. Please check your BEEHIIV_API_KEY.")
             elif response.status_code == 403:
-                raise Exception("API access forbidden. Please check your API key permissions.")
+                raise Exception(
+                    "API access forbidden. Please check your API key permissions."
+                )
             elif response.status_code == 404:
                 raise Exception("Resource not found.")
             elif response.status_code >= 500:
                 raise Exception("Beehiiv API server error. Please try again later.")
             else:
-                raise Exception(f"API request failed with status {response.status_code}: {str(e)}")
+                raise Exception(
+                    f"API request failed with status {response.status_code}: {str(e)}"
+                )
         except requests.exceptions.RequestException as e:
             raise Exception(f"API request failed: {str(e)}")
 
@@ -486,12 +492,15 @@ async def main():
     try:
         # Set up signal handlers for graceful shutdown
         def signal_handler(signum, frame):
-            print(f"Received signal {signum}, shutting down gracefully...", file=sys.stderr)
+            print(
+                f"Received signal {signum}, shutting down gracefully...",
+                file=sys.stderr,
+            )
             sys.exit(0)
-        
+
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
-        
+
         async with stdio_server() as (read_stream, write_stream):
             await server.run(
                 read_stream,

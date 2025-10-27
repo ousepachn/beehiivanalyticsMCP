@@ -1,0 +1,25 @@
+{
+  "name": "beehiiv-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Beehiiv API integration - manage newsletters, publications, posts, and subscribers",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "axios": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "beehiiv",
+    "newsletter",
+    "analytics"
+  ],
+  "author": "ousepachn",
+  "license": "MIT"
+}

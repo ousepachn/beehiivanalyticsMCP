@@ -7,12 +7,12 @@
     "name": "Ousep Achon"
   },
   "server": {
-    "type": "python",
-    "entry_point": "beehiiv_mcp_server.py",
+    "type": "node",
+    "entry_point": "server.js",
     "mcp_config": {
-      "command": "${__dirname}/venv/bin/python",
+      "command": "node",
       "args": [
-        "${__dirname}/beehiiv_mcp_server.py"
+        "${__dirname}/server.js"
       ]
     }
   }

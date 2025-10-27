@@ -11,15 +11,14 @@ example_usage.py
 .git/
 .gitignore
 
-# Python cache and temporary files
+# Python files (now using Node.js)
+*.py
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
 *.so
-
-# Virtual environment (we'll include dependencies differently)
 venv/
 .venv/
 env/
