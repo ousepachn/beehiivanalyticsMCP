@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "MCP server for Beehiiv API integration - manage newsletters, publications, posts, and subscribers",
   "author": {
-    "name": "Ousep Achon"
+    "name": "ousepachn"
   },
   "server": {
     "type": "node",
