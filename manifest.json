@@ -13,7 +13,53 @@
       "command": "node",
       "args": [
         "${__dirname}/server.js"
-      ]
+      ],
+      "env": {
+        "BEEHIIV_API_KEY": "${user_config.api_key}"
+      }
     }
-  }
+  },
+  "user_config": {
+    "api_key": {
+      "type": "string",
+      "title": "Beehiiv API Key",
+      "description": "Your Beehiiv API key for authentication",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "tools": [
+    {
+      "name": "get_publications",
+      "description": "Get list of publications"
+    },
+    {
+      "name": "get_publication_details",
+      "description": "Get detailed information about a specific publication"
+    },
+    {
+      "name": "get_posts",
+      "description": "Get posts for a publication"
+    },
+    {
+      "name": "get_post_details",
+      "description": "Get detailed information about a specific post"
+    },
+    {
+      "name": "get_subscribers",
+      "description": "Get subscribers for a publication"
+    },
+    {
+      "name": "get_subscriber_details",
+      "description": "Get detailed information about a specific subscriber"
+    },
+    {
+      "name": "get_segments",
+      "description": "Get segments for a publication"
+    },
+    {
+      "name": "get_segment_details",
+      "description": "Get detailed information about a specific segment"
+    }
+  ]
 }
