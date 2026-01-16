@@ -1,27 +1,26 @@
 {
   "dxt_version": "0.2",
-  "name": "beehiiv-mcp-server",
+  "name": "beehiiv-analytics-mcp",
   "display_name": "Beehiiv Analytics MCP Server",
   "version": "1.0.0",
-  "description": "MCP server for Beehiiv API integration - manage newsletters, publications, posts, and subscribers",
-  "long_description": "A comprehensive MCP server that provides access to Beehiiv's newsletter platform API. This extension allows you to manage publications, posts, subscribers, and segments directly from Claude Desktop. Perfect for content creators and newsletter managers who want to analyze their Beehiiv data and automate newsletter operations.",
+  "description": "MCP server for Beehiiv analytics - read-only access to publications, posts, and segments data",
+  "long_description": "A comprehensive MCP server that provides read-only access to Beehiiv's newsletter platform API for analytics. This extension allows you to analyze publications, posts, and segments directly from Claude Desktop. Perfect for content creators and newsletter managers who want to analyze their Beehiiv data and track performance metrics.",
   "author": {
-    "name": "ousepachn",
-    "email": "ousepachn@example.com"
+    "name": "Your Name",
+    "email": "your.email@example.com"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/ousepachn/beehiivanalyticsMCP"
   },
   "homepage": "https://github.com/ousepachn/beehiivanalyticsMCP",
-  "icon": "icon.png",
   "server": {
-    "type": "node",
-    "entry_point": "server.js",
+    "type": "python",
+    "entry_point": "beehiiv_mcp_server.py",
     "mcp_config": {
-      "command": "node",
+      "command": "python3",
       "args": [
-        "${__dirname}/server.js"
+        "${__dirname}/beehiiv_mcp_server.py"
       ],
       "env": {
         "BEEHIIV_API_KEY": "${user_config.api_key}"
@@ -39,36 +38,32 @@
   },
   "tools": [
     {
-      "name": "get_publications",
-      "description": "Get list of all publications associated with your Beehiiv account"
+      "name": "list_publications",
+      "description": "List all publications accessible with the API key"
     },
     {
       "name": "get_publication_details",
-      "description": "Get detailed information about a specific publication including settings, analytics, and configuration"
+      "description": "Get detailed information about a specific publication"
     },
     {
-      "name": "get_posts",
-      "description": "Get posts for a specific publication with optional limit parameter"
+      "name": "list_posts",
+      "description": "List posts from a publication with various filters (status, audience, platform, date sorting)"
     },
     {
       "name": "get_post_details",
-      "description": "Get detailed information about a specific post including content, analytics, and metadata"
+      "description": "Get detailed information about a specific post with optional content expansion"
     },
     {
-      "name": "get_subscribers",
-      "description": "Get subscribers for a specific publication with optional limit parameter"
+      "name": "get_posts_summary_stats",
+      "description": "Get aggregate statistics for all posts in a publication"
     },
     {
-      "name": "get_subscriber_details",
-      "description": "Get detailed information about a specific subscriber including subscription status and preferences"
-    },
-    {
-      "name": "get_segments",
-      "description": "Get segments for a specific publication to organize and target subscribers"
+      "name": "list_segments",
+      "description": "List all segments for a publication"
     },
     {
       "name": "get_segment_details",
-      "description": "Get detailed information about a specific segment including subscriber count and criteria"
+      "description": "Get detailed information about a specific segment"
     }
   ]
 }

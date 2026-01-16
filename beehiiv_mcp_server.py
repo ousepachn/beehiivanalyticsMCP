@@ -94,7 +94,7 @@ class BeehiivAPI:
         status: str = "all",
         audience: str = "all",
         platform: str = "all",
-        order_by: str = "created",
+        order_by: str = "publish_date",
         direction: str = "desc",
         expand: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
@@ -109,12 +109,48 @@ class BeehiivAPI:
             "direction": direction,
         }
 
+        # Handle expand parameter - Beehiiv API expects it as a list
         if expand:
             params["expand"] = expand
 
         data = self._make_request(
             "GET", f"/publications/{publication_id}/posts", params
         )
+
+        # Client-side sorting as fallback to ensure proper date ordering
+        posts = data.get("data", [])
+        if posts and order_by in ["publish_date", "displayed_date", "created"]:
+            # Sort posts to ensure proper ordering (newest first for desc, oldest first for asc)
+            reverse_order = direction == "desc"
+
+            # Use the appropriate date field
+            date_field = order_by
+
+            # Separate posts with and without dates
+            posts_with_dates = [
+                post for post in posts if post.get(date_field) is not None
+            ]
+            posts_without_dates = [
+                post for post in posts if post.get(date_field) is None
+            ]
+
+            # Sort posts with dates
+            if posts_with_dates:
+                posts_with_dates.sort(
+                    key=lambda x: x.get(date_field, 0), reverse=reverse_order
+                )
+
+            # Combine: posts with dates (sorted) first, then posts without dates
+            if reverse_order:
+                # For desc: newest first, so posts with dates come first
+                sorted_posts = posts_with_dates + posts_without_dates
+            else:
+                # For asc: oldest first, so posts without dates come first
+                sorted_posts = posts_without_dates + posts_with_dates
+
+            # Update the data with sorted posts
+            data["data"] = sorted_posts
+
         return data
 
     def get_post_details(
@@ -246,9 +282,9 @@ async def list_tools() -> ListToolsResult:
                         },
                         "order_by": {
                             "type": "string",
-                            "description": "Field to sort by",
+                            "description": "Field to sort by. Use 'publish_date' or 'displayed_date' for most recent posts, 'created' for creation date",
                             "enum": ["created", "publish_date", "displayed_date"],
-                            "default": "created",
+                            "default": "publish_date",
                         },
                         "direction": {
                             "type": "string",
@@ -404,7 +440,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> CallToolResult:
             status = arguments.get("status", "all")
             audience = arguments.get("audience", "all")
             platform = arguments.get("platform", "all")
-            order_by = arguments.get("order_by", "created")
+            order_by = arguments.get("order_by", "publish_date")
             direction = arguments.get("direction", "desc")
             expand = arguments.get("expand")
 
