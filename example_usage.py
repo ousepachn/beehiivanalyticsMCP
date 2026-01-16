@@ -7,6 +7,11 @@ This shows how to use the server programmatically.
 import asyncio
 import json
 import os
+import sys
+
+# Add the current directory to the path so we can import the server module
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from beehiiv_mcp_server import BeehiivAPI
 
 
@@ -14,7 +19,16 @@ async def example_usage():
     """Example of how to use the Beehiiv MCP Server."""
 
     # Initialize the API client
-    api_key = os.getenv("BEEHIIV_API_KEY", "your_api_key_here")
+    # Load from .env file or environment variable
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    api_key = os.getenv("BEEHIIV_API_KEY")
+    if not api_key:
+        print("❌ Error: BEEHIIV_API_KEY not found!")
+        print("Please set it in your .env file or as an environment variable.")
+        return
+    
     client = BeehiivAPI(api_key)
 
     print("🐝 Beehiiv MCP Server Example Usage")
@@ -136,3 +150,4 @@ async def example_usage():
 
 if __name__ == "__main__":
     asyncio.run(example_usage())
+
