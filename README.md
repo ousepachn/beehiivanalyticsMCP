@@ -2,6 +2,10 @@
 
 A Model Context Protocol (MCP) server for Beehiiv analytics, providing read-only access to publications, posts, and segments data.
 
+<a href="https://glama.ai/mcp/servers/@ousepachn/beehiivanalyticsMCP">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@ousepachn/beehiivanalyticsMCP/badge" alt="Beehiiv Analytics Server MCP server" />
+</a>
+
 ## Features
 
 ### Publications
