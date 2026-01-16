@@ -17,7 +17,6 @@ This document explains how to set up this repository as a GitHub template that o
 3. **Update Repository Information**
    - Update the README.md with your repository URL
    - Update manifest.json with your repository URL
-   - Update package.json with your information (optional)
 
 ## What's Included in This Template
 
@@ -50,7 +49,6 @@ This document explains how to set up this repository as a GitHub template that o
 When users create a repository from this template, they should:
 
 1. **Update personal information:**
-   - `package.json` - Author name
    - `manifest.json` - Author and repository URLs
 
 2. **Set up their environment:**
@@ -100,7 +98,6 @@ beehiivMCP/
 ├── .env.example                # Environment template
 ├── mcp_config.json.example     # Config template
 ├── manifest.json               # MCP manifest
-├── package.json                # Package info
 ├── example_usage.py            # Usage examples
 ├── test_*.py                   # Test files
 └── .gitignore                  # Git ignore rules
