@@ -1,6 +1,6 @@
 # Beehiiv MCP Server
 
-A Model Context Protocol (MCP) server for Beehiiv analytics, providing read-only access to publications, posts, and segments data.
+A Model Context Protocol (MCP) server for Beehiiv analytics, providing read access to publications, posts, and segments data, plus a guarded tool for unsubscribing subscribers.
 
 ## Features
 
@@ -16,6 +16,9 @@ A Model Context Protocol (MCP) server for Beehiiv analytics, providing read-only
 ### Segments
 - List all segments for a publication
 - Get detailed segment information
+
+### Subscribers
+- Unsubscribe one or more subscribers by email (dry-run by default, reversible)
 
 ## Prerequisites
 
@@ -158,6 +161,7 @@ The server provides the following MCP tools:
 - **`get_posts_summary_stats`** - Get aggregate statistics for all posts in a publication
 - **`list_segments`** - List all segments for a publication
 - **`get_segment_details`** - Get detailed information about a specific segment
+- **`unsubscribe_subscribers`** - Unsubscribe (mark inactive) one or more subscribers by email. Defaults to a dry run that reports what would change; pass `apply: true` to actually make the change. Already-inactive or not-found emails are skipped, so it's safe to re-run.
 
 ## Usage Examples
 
@@ -169,6 +173,8 @@ Once configured, you can ask Claude:
 - "Show me the 10 most recent posts from publication X"
 - "What are the stats for my latest post?"
 - "List all segments for publication Y"
+- "Show me what would happen if I unsubscribed jane@example.com and john@example.com from publication X" (dry run)
+- "Unsubscribe jane@example.com from publication X" (pass `apply: true` to actually make the change)
 
 ### Programmatic Usage
 

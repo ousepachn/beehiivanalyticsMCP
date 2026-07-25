@@ -26,8 +26,8 @@ python test_server_startup.py
 
 **Expected output:**
 - ✅ Server capabilities retrieved successfully
-- ✅ Tools listed successfully: 7 tools available
-- List of all 7 tools
+- ✅ Tools listed successfully: 8 tools available
+- List of all 8 tools
 
 ### 2. Full Functionality Test
 
