@@ -9,6 +9,8 @@ import json
 import os
 import signal
 import sys
+import time
+import urllib.parse
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -42,13 +44,28 @@ class BeehiivAPI:
         }
 
     def _make_request(
-        self, method: str, endpoint: str, params: Optional[Dict] = None
-    ) -> Dict[str, Any]:
-        """Make a request to the Beehiiv API with improved error handling."""
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[Dict] = None,
+        json_body: Optional[Dict] = None,
+        allow_404: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Make a request to the Beehiiv API with improved error handling.
+
+        Pass json_body to send a JSON request body (for write endpoints).
+        Set allow_404=True to return None on a 404 instead of raising (useful
+        for lookups where "not found" is an expected, non-fatal outcome).
+        """
         url = f"{self.base_url}{endpoint}"
         try:
             response = requests.request(
-                method, url, headers=self.headers, params=params, timeout=30
+                method,
+                url,
+                headers=self.headers,
+                params=params,
+                json=json_body,
+                timeout=30,
             )
             response.raise_for_status()
             return response.json()
@@ -66,6 +83,8 @@ class BeehiivAPI:
                     "API access forbidden. Please check your API key permissions."
                 )
             elif response.status_code == 404:
+                if allow_404:
+                    return None
                 raise Exception("Resource not found.")
             elif response.status_code >= 500:
                 raise Exception("Beehiiv API server error. Please try again later.")
@@ -198,6 +217,134 @@ class BeehiivAPI:
             "GET", f"/publications/{publication_id}/segments/{segment_id}"
         )
         return data.get("data", {})
+
+    def get_subscription_by_email(
+        self, publication_id: str, email: str
+    ) -> Optional[Dict[str, Any]]:
+        """Look up a single subscription by email.
+
+        Returns the subscription dict (including its prefixed id and status),
+        or None if no subscription with that email exists in the publication.
+        The email is URL-encoded as required by the Beehiiv API.
+        """
+        encoded = urllib.parse.quote(email, safe="")
+        data = self._make_request(
+            "GET",
+            f"/publications/{publication_id}/subscriptions/by_email/{encoded}",
+            allow_404=True,
+        )
+        if not data:
+            return None
+        return data.get("data")
+
+    def unsubscribe_subscription(
+        self, publication_id: str, subscription_id: str
+    ) -> Dict[str, Any]:
+        """Mark a single subscription as inactive (unsubscribe).
+
+        This uses the reversible unsubscribe action; it does NOT delete the
+        subscriber record.
+        """
+        data = self._make_request(
+            "PUT",
+            f"/publications/{publication_id}/subscriptions/{subscription_id}",
+            json_body={"unsubscribe": True},
+        )
+        return data.get("data", {}) if data else {}
+
+    def unsubscribe_emails(
+        self, publication_id: str, emails: List[str], apply: bool = False
+    ) -> Dict[str, Any]:
+        """Unsubscribe (mark inactive) a list of subscribers by email.
+
+        Safety: when apply is False (the default) this is a DRY RUN that reports
+        what would change without modifying anything. Uses unsubscribe
+        (reversible), never delete. Emails that are already inactive or not
+        found are skipped, so the operation is safe to re-run.
+        """
+        results: List[Dict[str, Any]] = []
+        changed = skipped = failed = 0
+
+        for email in emails:
+            try:
+                sub = self.get_subscription_by_email(publication_id, email)
+            except Exception as e:
+                results.append(
+                    {"email": email, "action": "failed", "detail": f"lookup error: {e}"}
+                )
+                failed += 1
+                continue
+
+            if not sub:
+                results.append(
+                    {
+                        "email": email,
+                        "action": "skipped",
+                        "detail": "not found in this publication",
+                    }
+                )
+                skipped += 1
+                continue
+
+            sub_id = sub.get("id")
+            status = sub.get("status")
+
+            if status == "inactive":
+                results.append(
+                    {
+                        "email": email,
+                        "subscription_id": sub_id,
+                        "action": "skipped",
+                        "detail": "already inactive",
+                    }
+                )
+                skipped += 1
+                continue
+
+            if not apply:
+                results.append(
+                    {
+                        "email": email,
+                        "subscription_id": sub_id,
+                        "action": "would_unsubscribe",
+                        "detail": f"current status: {status}",
+                    }
+                )
+                changed += 1
+                continue
+
+            try:
+                updated = self.unsubscribe_subscription(publication_id, sub_id)
+            except Exception as e:
+                results.append(
+                    {
+                        "email": email,
+                        "subscription_id": sub_id,
+                        "action": "failed",
+                        "detail": f"update error: {e}",
+                    }
+                )
+                failed += 1
+                continue
+
+            results.append(
+                {
+                    "email": email,
+                    "subscription_id": sub_id,
+                    "action": "unsubscribed",
+                    "detail": f"status now: {updated.get('status', 'inactive')}",
+                }
+            )
+            changed += 1
+            time.sleep(0.5)  # be gentle with rate limits between writes
+
+        change_key = "unsubscribed" if apply else "would_unsubscribe"
+        return {
+            "mode": "apply" if apply else "dry_run",
+            "publication_id": publication_id,
+            "summary": {change_key: changed, "skipped": skipped, "failed": failed},
+            "results": results,
+        }
 
 
 # Global API client instance
@@ -408,6 +555,37 @@ async def list_tools() -> ListToolsResult:
                     "required": ["publication_id", "segment_id"],
                 },
             ),
+            Tool(
+                name="unsubscribe_subscribers",
+                description=(
+                    "Unsubscribe one or more subscribers (mark them INACTIVE) by "
+                    "email. They stop receiving sends but their records are kept, "
+                    "so this is reversible; it does NOT delete anyone. Defaults to a "
+                    "dry run that reports what would change: set apply=true to "
+                    "actually make the changes. Emails that are already inactive or "
+                    "not found are skipped, so it is safe to re-run."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "publication_id": {
+                            "type": "string",
+                            "description": "The publication ID (e.g., pub_00000000-0000-0000-0000-000000000000)",
+                        },
+                        "emails": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Email addresses to unsubscribe",
+                        },
+                        "apply": {
+                            "type": "boolean",
+                            "description": "When false (default), performs a dry run and reports what would change without modifying anything. Set true to actually unsubscribe.",
+                            "default": False,
+                        },
+                    },
+                    "required": ["publication_id", "emails"],
+                },
+            ),
         ]
     )
 
@@ -498,6 +676,17 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> CallToolResult:
             details = client.get_segment_details(publication_id, segment_id)
             return CallToolResult(
                 content=[TextContent(type="text", text=json.dumps(details, indent=2))]
+            )
+
+        elif name == "unsubscribe_subscribers":
+            publication_id = arguments["publication_id"]
+            emails = arguments["emails"]
+            apply = arguments.get("apply", False)
+            result = client.unsubscribe_emails(
+                publication_id, emails, apply=apply
+            )
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(result, indent=2))]
             )
 
         else:
